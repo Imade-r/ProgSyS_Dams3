@@ -1,22 +1,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/mman.h>   // Pour mmap (gestion mémoire partagée)
-#include <semaphore.h>  // Pour les sémaphores
-#include <sys/wait.h>   // Pour wait()
-#include <fcntl.h>      // Pour les constantes O_CREAT etc.
+#include <sys/mman.h>  
+#include <semaphore.h>  
+#include <sys/wait.h>  
+#include <fcntl.h>      
 
-// --- PARAMÈTRES DU TAMPON ---
-#define N 10            // Taille du tampon circulaire
-#define NB_ITEMS 20     // Nombre total d'items à produire/consommer
+
+#define N 10            
+#define NB_ITEMS 20     
 
 // --- STRUCTURE DE MÉMOIRE PARTAGÉE ---
 // Cette structure regroupe toutes les données qui doivent être visibles
 // par le processus père et le processus fils.
 typedef struct {
-    int tab[N];             // Le tampon de données (buffer circulaire)
-    int i;                  // Index d'écriture (utilisé par le Producteur)
-    int j;                  // Index de lecture (utilisé par le Consommateur)
+    int tab[N];             
+    int i;                  // Index d'écriture (Producteur)
+    int j;                  // Index de lecture (Consommateur)
     
     // Les sémaphores doivent impérativement être stockés en mémoire partagée
     // pour que les opérations wait/post agissent sur les mêmes compteurs.
@@ -28,9 +28,9 @@ typedef struct {
 int main() {
     printf("--- Démarrage (Version Processus/Fork) ---\n");
 
-    // =================================================================
+    
     // 1. ALLOCATION DE LA MÉMOIRE PARTAGÉE
-    // =================================================================
+    
     // mmap crée un mappage en mémoire virtuelle.
     // MAP_ANONYMOUS : La mémoire n'est pas adossée à un fichier.
     // MAP_SHARED : Les mises à jour sont visibles par les autres processus mappant cette zone.
@@ -43,9 +43,9 @@ int main() {
         exit(1);
     }
 
-    // =================================================================
+    
     // 2. INITIALISATION DES RESSOURCES
-    // =================================================================
+    
     partagee->i = 0;
     partagee->j = 0;
 
@@ -56,9 +56,9 @@ int main() {
     sem_init(&partagee->items_existants, 1, 0); // Compteur d'items prêts (init à 0)
     sem_init(&partagee->mutex, 1, 1);           // Exclusion mutuelle (init à 1 = libre)
 
-    // =================================================================
+   
     // 3. CRÉATION DU PROCESSUS FILS
-    // =================================================================
+    
     // fork() duplique le processus courant.
     // Le père reçoit le PID du fils, le fils reçoit 0.
     pid_t pid = fork();
@@ -68,9 +68,9 @@ int main() {
         exit(1);
     }
 
-    // =================================================================
+    
     // 4. CODE DU PROCESSUS FILS (CONSOMMATEUR)
-    // =================================================================
+    
     if (pid == 0) {
         printf("[Fils] Processus Consommateur démarré (PID %d)\n", getpid());
 
@@ -104,9 +104,9 @@ int main() {
         exit(0); // Terminaison du processus fils
     }
     
-    // =================================================================
+    
     // 5. CODE DU PROCESSUS PÈRE (PRODUCTEUR)
-    // =================================================================
+    
     else {
         printf("[Père] Processus Producteur démarré (PID %d)\n", getpid());
 
@@ -135,9 +135,9 @@ int main() {
             sleep(1); // Simulation du temps de production
         }
 
-        // =================================================================
+        
         // 6. SYNCHRONISATION TERMINALE
-        // =================================================================
+        
         
         // Le père attend la terminaison du fils pour éviter un processus zombie.
         wait(NULL); 
@@ -154,4 +154,5 @@ int main() {
     }
 
     return 0;
+
 }

@@ -11,8 +11,7 @@
 #include "3-common.h"
 
 // Variable globale modifiée par le handler de signal (interruption).
-// 'volatile' empêche le compilateur d'optimiser les lectures de cette variable.
-volatile int stop = 0;
+int stop = 0;
 
 // Handler exécuté lors de la réception de SIGINT (Ctrl+C)
 void handler(int sig) {
@@ -150,4 +149,5 @@ int main() {
     unlink(FIFO_PROD); 
 
     return 0;
+
 }

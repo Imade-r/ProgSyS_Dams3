@@ -6,14 +6,14 @@
 #include <sys/wait.h>   
 #include <fcntl.h>      
 #include <string.h>     
-#include <sys/stat.h>   // [AJOUT] Pour mkfifo
-#include <errno.h>      // [AJOUT] Pour gérer les erreurs (EAGAIN)
+#include <sys/stat.h>   // Pour mkfifo
+#include <errno.h>      // Pour gérer les erreurs 
 
 // --- CONSTANTES ---
 #define N 10            
 #define TAILLE_MSG 64   
 
-// [AJOUT] Noms des tubes (Doivent correspondre à ceux dans communicant.c / common.h)
+//Noms des tubes 
 #define FIFO_P "/tmp/fifo_producteur"
 #define FIFO_C "/tmp/fifo_consommateur"
 
@@ -33,7 +33,7 @@ typedef struct {
 int main() {
     printf("--- Démarrage (Version Fork V2 + Communicant) ---\n");
 
-    // [AJOUT] Création des tubes nommés
+    // Création des tubes nommés
     // On le fait ici pour être sûr qu'ils existent avant que quiconque n'essaie de les ouvrir
     mkfifo(FIFO_P, 0644);
     mkfifo(FIFO_C, 0644);
@@ -52,7 +52,7 @@ int main() {
     sem_init(&partagee->items_existants, 1, 0); 
     sem_init(&partagee->mutex, 1, 1);           
 
-    // [AJOUT] Variable de contrôle d'arrêt (Locale à chaque processus après le fork)
+    // Variable de contrôle d'arrêt (Locale à chaque processus après le fork)
     int stop = 0;
 
     // 3. FORK
@@ -63,22 +63,29 @@ int main() {
     // 4. CONSOMMATEUR (FILS)
     // =================================================================
     if (pid == 0) {
-        // [AJOUT] Ouverture du tube en lecture NON-BLOQUANTE
+        //Avec O_NONBLOCK, open dit : "Oouvre le tube, et si personne 
+        //n'écrit dedans pour l'instant, ce n'est pas grave, continue l'exécution tout de suite."
         int fd_fifo = open(FIFO_C, O_RDONLY | O_NONBLOCK);
         
-        // [AJOUT] On boucle tant que stop est faux (piloté par le communicant)
+        // On boucle tant que stop est faux (piloté par le communicant)
         while (!stop) { 
             
             // --- A. Écoute du Communicant ---
             if (fd_fifo != -1) {
                 char buffer[128];
                 int n = read(fd_fifo, buffer, 127); // Lecture non-bloquante
+                //Si il a lu quelquechose
                 if (n > 0) {
+                    //read ne met pas le \0 , il faut le mettre pour strcmp
                     buffer[n] = '\0';
+
+                    //si les 4 premières lettres sont "stop".
                     if (strncmp(buffer, "stop", 4) == 0) {
                         printf("! [Fils] Ordre STOP reçu.\n");
-                        stop = 1; // On sortira de la boucle
-                    } else {
+                        stop = 1; // On sort de la boucle
+                    } 
+                    
+                    else {
                         printf("! [Fils] Message ADMIN : %s\n", buffer);
                     }
                 }
@@ -86,7 +93,7 @@ int main() {
             
             // --- B. Consommation (Version Non-Bloquante) ---
             // On utilise sem_trywait au lieu de sem_wait.
-            // Pourquoi ? Si le tampon est vide, sem_wait bloquerait tout le processus,
+            // Si le tampon est vide, sem_wait bloquerait tout le processus,
             // et on ne pourrait plus lire le tube pour recevoir l'ordre "stop".
             if (!stop && sem_trywait(&partagee->items_existants) == 0) {
                 
@@ -101,7 +108,7 @@ int main() {
 
                 sleep(1); 
             } else {
-                // Si rien à faire, on dort un peu pour ne pas surcharger le CPU (100ms)
+                //Pour pas surcharger le CPU (100ms)
                 usleep(100000); 
             }
         }
@@ -115,7 +122,7 @@ int main() {
     // 5. PRODUCTEUR (PÈRE)
     // =================================================================
     else {
-        // [AJOUT] Ouverture du tube producteur
+        //Ouverture du tube producteur
         int fd_fifo = open(FIFO_P, O_RDONLY | O_NONBLOCK);
         
         char message_actuel[TAILLE_MSG] = "Colis defaut"; // Message par défaut

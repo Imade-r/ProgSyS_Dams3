@@ -113,7 +113,7 @@ int main() {
         for(int k = 0; k < NB_ITEMS; k++) {
             int item = k * 10;  // Production de la donnée
             
-            // 1. Attente passive si le tampon est plein
+            // 1. Attente si le tableau est plein
             sem_wait(&partagee->places_libres); 
             
             // 2. Entrée en section critique
@@ -122,7 +122,9 @@ int main() {
             // --- DÉBUT SECTION CRITIQUE ---
             // Accès aux variables partagées tab et i
             partagee->tab[partagee->i] = item;
+            
             printf("-> [Père] Écriture : %d (index %d)\n", item, partagee->i);
+            
             partagee->i = (partagee->i + 1) % N; // Gestion circulaire
             // --- FIN SECTION CRITIQUE ---
 
@@ -156,3 +158,4 @@ int main() {
     return 0;
 
 }
+

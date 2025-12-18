@@ -50,16 +50,21 @@ int main() {
 
     while (1) {
         printf("> ");
-        // Lecture bloquante de l'entrée standard (Clavier)
-        if (fgets(buffer, CMD_SIZE, stdin) == NULL) break;
+        // "%[^\n]" : Lit tout ce qui n'est PAS un retour à la ligne (donc accepte les espaces).
+        // "%127[^\n]" : Limite la lecture à 127 caractères pour éviter le débordement (Sécurité).
         
-        // Nettoyage : suppression du saut de ligne (\n) lu par fgets
-        buffer[strcspn(buffer, "\n")] = 0;
+        int resultat = scanf(" %127[^\n]", buffer);
 
+        // Si l'utilisateur fait Ctrl+D (EOF) ou s'il y a une erreur
+        if (resultat == EOF) break;
+
+        //Compare ce qui a dans bufffer avec q. Si les deux sont identiques, strcmp renvoie 0.
         if (strcmp(buffer, "q") == 0) break;
+
+        //Si on rentre rien, ca continue
         if (strlen(buffer) == 0) continue;
 
-        // Analyse de la commande
+        //  On compare les 2 premiers caracteres
         if (strncmp(buffer, "p ", 2) == 0) {
             // Envoie au Producteur tout ce qui suit "p "
             envoyer(FIFO_PROD, buffer + 2); 

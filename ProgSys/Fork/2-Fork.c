@@ -116,7 +116,6 @@ int main() {
     // 5. CODE DU PROCESSUS PÈRE (PRODUCTEUR)
     // =================================================================
     else {
-        // Le père exécute ce bloc
         
         for(int k = 0; k < NB_ITEMS; k++) {
             Donnee item_a_envoyer; // Variable locale au père
@@ -168,4 +167,5 @@ int main() {
     }
 
     return 0;
+
 }

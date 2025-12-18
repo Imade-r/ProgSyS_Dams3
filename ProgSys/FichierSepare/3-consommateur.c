@@ -10,7 +10,7 @@
 #include <errno.h>
 #include "3-common.h"
 
-volatile int stop = 0;
+int stop = 0;
 
 void handler(int sig) {
     stop = 1;
@@ -20,8 +20,6 @@ int main() {
     // 1. CONFIGURATION DU SIGNAL
     struct sigaction psa;
     psa.sa_handler = handler;
-    sigemptyset(&psa.sa_mask);
-    psa.sa_flags = 0;
     sigaction(SIGINT, &psa, NULL);
 
     // 2. CONNEXION MÉMOIRE PARTAGÉE
@@ -100,4 +98,5 @@ int main() {
     unlink(FIFO_CONSO);
 
     return 0;
+
 }

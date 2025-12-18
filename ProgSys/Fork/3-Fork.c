@@ -1,182 +1,167 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/mman.h>   // Gestion de la mémoire partagée
-#include <semaphore.h>  // Sémaphores POSIX
-#include <sys/wait.h>   // Gestion des processus (wait)
+#include <sys/mman.h>
+#include <semaphore.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <string.h>
-#include <signal.h>     // Pour sigaction
-#include <errno.h>      // Pour EINTR
+#include <signal.h> // Pour la gestion des signaux
+#include <errno.h>  // Pour capturer les interruptions (EINTR)
 
 #define N 10 
 #define TAILLE_MSG 64
 
-// --- VARIABLE GLOBALE (Non-partagée entre processus) ---
-// Contrairement aux threads, cette variable est DUPLIQUÉE lors du fork.
-// Le Père aura sa copie, le Fils aura la sienne.
-// Lors d'un Ctrl+C, le signal est envoyé au GROUPE de processus :
-// le Père et le Fils le reçoivent tous les deux et modifient leur propre variable.
+// --- GLOBAL ---
+// Variable globale qui sert de "drapeau". 
+// 0 = Tout va bien, on continue.
+// 1 = On a reçu Ctrl+C, il faut s'arrêter.
 int stop = 0; 
 
-// Gestionnaire de signal
+// Fonction appelée automatiquement quand on fait Ctrl+C
 void handler_signal(int sig) {
-    // Write est "async-signal-safe", contrairement à printf.
-    // On l'utilise pour éviter des blocages rares mais possibles dans le handler.
-    if (stop == 0) {
-        write(STDOUT_FILENO, "\n[SYSTEM] Signal reçu (Arrêt demandé)\n", 38);
-    }
-    stop = 1; 
+    stop = 1; // On lève le drapeau : "C'est l'heure d'arrêter !"
 }
 
-// --- STRUCTURE DE DONNÉES ---
+
+// --- STRUCTURE DONNÉES ---
+// On "emballe" le tableau de char dans une structure pour pouvoir 
+// le copier facilement avec un simple signe "=" (astuce C).
+
 typedef struct {
     char texte[TAILLE_MSG];
 } Donnee;
 
-// --- MÉMOIRE PARTAGÉE (Partagée entre processus) ---
+
+// --- MÉMOIRE PARTAGÉE ---
+// Cette structure représente tout ce que le Père et le Fils vont partager.
 typedef struct {
-    Donnee tab[N];          
-    int i;                  
-    int j;                  
-    sem_t places_libres;    
-    sem_t items_existants;  
-    sem_t mutex;            
+    Donnee tab[N];      // Le tableau circulaire de données
+    int i;              // Où le Producteur écrit
+    int j;              // Où le Consommateur lit
+    sem_t places_libres;    // Sém. pour savoir si on peut écrire
+    sem_t items_existants;  // Sém. pour savoir si on peut lire
+    sem_t mutex;            // Sém. pour protéger les variables i et j
 } MemoirePartagee;
 
+
+
 int main() {
-    // =================================================================
-    // 1. CONFIGURATION DU SIGNAL (sigaction)
-    // =================================================================
-    // Cette configuration est faite AVANT le fork, donc le Père et le Fils
-    // hériteront du même comportement face au signal SIGINT.
+    // === 1. CONFIGURATION DU SIGNAL (Slide 127) ===
+    // On prépare la structure pour dire au système : 
+    // "Si tu reçois SIGINT (Ctrl+C), lance la fonction 'handler_signal'"
+
     struct sigaction sa; 
-    sa.sa_handler = handler_signal;
-    sa.sa_flags = 0; // Pas de comportement spécial (comme SA_RESTART)
-    // On vide le masque (pas de signaux bloqués pendant l'exécution du handler)
-    sigemptyset(&sa.sa_mask); 
+    sa.sa_handler = handler_signal;  //Intitulé de la case vide sur le papier, marquée : "Qui doit gérer le problème ?" (ca vient de la struct sigaction -> <signal.h>)
+    
+    // On applique la configuration
+    sigaction(SIGINT, &sa, NULL);   // Si on fait CTRL + C --> handler_signal --> stop = 1;
 
-    if (sigaction(SIGINT, &sa, NULL) == -1) {
-        perror("Erreur sigaction");
-        exit(1);
-    }
-
-    // =================================================================
-    // 2. ALLOCATION MÉMOIRE PARTAGÉE
-    // =================================================================
+    // === 2. CRÉATION MÉMOIRE PARTAGÉE (Slide 89) ===
+    // mmap avec MAP_ANONYMOUS permet de créer de la RAM partagée sans fichier.
+    // PROT_READ | PROT_WRITE : On veut lire et écrire dedans.
+    // MAP_SHARED : Les modifications du fils seront vues par le père.
     MemoirePartagee* partage = mmap(NULL, sizeof(MemoirePartagee), 
                                     PROT_READ | PROT_WRITE, 
                                     MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 
-    if (partage == MAP_FAILED) { perror("mmap"); exit(1); }
-
-    // Initialisation
+    // Initialisation des indices à 0
     partage->i = 0; 
     partage->j = 0;
 
-    // =================================================================
-    // 3. INITIALISATION SÉMAPHORES (Inter-processus)
-    // =================================================================
-    // pshared = 1 est INDISPENSABLE ici pour que les sémaphores fonctionnent
-    // entre deux processus distincts (mémoire mappée).
-    sem_init(&partage->places_libres, 1, N); 
-    sem_init(&partage->items_existants, 1, 0); 
-    sem_init(&partage->mutex, 1, 1); 
+    // === 3. INITIALISATION SÉMAPHORES (Slide 126) ===
+    // pshared = 1 car partagé entre processus (Père/Fils).
+    sem_init(&partage->places_libres, 1, N); // Au début, N places vides
+    sem_init(&partage->items_existants, 1, 0); // Au début, 0 message à lire
+    sem_init(&partage->mutex, 1, 1); // Mutex ouvert (1 clé disponible)
 
-    printf("--- Démarrage Fork V3 (Signal) - PID Père: %d ---\n", getpid());
-
-    // =================================================================
-    // 4. DUPLICATION (FORK)
-    // =================================================================
+    // === 4. DUPLICATION DU PROCESSUS (Slide 38) ===
     pid_t pid = fork();
-
-    if (pid < 0) { perror("fork"); exit(1); }
 
     // --- CODE DU FILS (CONSOMMATEUR) ---
     if (pid == 0) {
-        while (!stop) { 
+        while (stop==0) { 
             Donnee item_recu;
             
-            // A. Attente d'un item (Interruptible par signal)
+            // On attend qu'il y ait un item (P sur items_existants)
+            // Si on fait Ctrl+C pendant l'attente, sem_wait renvoie -1
             if (sem_wait(&partage->items_existants) == -1) {
-                // Si l'erreur est EINTR, c'est que le signal a interrompu l'appel.
-                // On boucle pour revérifier la condition 'while(!stop)'.
-                if (errno == EINTR) continue; 
-                perror("sem_wait fils"); break;
+                // On vérifie si c'est à cause du signal
+                if (errno == EINTR) { //Si errno vaut EINTR , cela signifie:"Je n'ai pas eu de problème technique, j'ai été interrompu par un signal (comme Ctrl+C)."
+                    // Oui, c'est le signal, donc on sort de la boucle while
+                    continue; // Le continue nous renvoie au while (!stop).
+                }
             }
 
-            // Vérification post-réveil : si stop est mis, on n'entre pas en section critique
-            if (stop) {
-                sem_post(&partage->items_existants); // On "rend" le jeton si on ne consomme pas
-                break;
-            }
+            // Si on a reçu le signal stop juste après le wait, on sort
+            if (stop) break;
 
-            // B. Accès Exclusif
-            sem_wait(&partage->mutex);
+            // -- DÉBUT SECTION CRITIQUE --
+            sem_wait(&partage->mutex); // Je verrouille l'accès aux index
 
-            // --- Section Critique ---
+            // Je copie la donnée depuis la mémoire partagée
             item_recu = partage->tab[partage->j];
+            
+            // J'avance mon index de lecture (circulaire)
             partage->j = (partage->j + 1) % N;
-            // ------------------------
 
-            sem_post(&partage->mutex);
+            sem_post(&partage->mutex); // Je déverrouille
+            // -- FIN SECTION CRITIQUE --
 
-            // C. Libération place
+            // Je signale qu'une place s'est libérée (V sur places_libres)
             sem_post(&partage->places_libres);
 
-            printf("   <- [Fils] Lu : '%s'\n", item_recu.texte);
-            sleep(1);
+            // J'affiche mon message personnalisé
+            printf("   [Fils] J'ai lu : '%s'\n", item_recu.texte);
+            
+            sleep(1); // Pause pour voir ce qui se passe
         }
         
-        printf("   [Fils] Fin du processus (PID %d).\n", getpid());
+        // Si on sort du while, c'est qu'on a fait Ctrl+C
+        printf("\n -> [Fils] J'ai reçu l'ordre d'arrêt. Je termine.\n");
         exit(0); 
     } 
     
     // --- CODE DU PÈRE (PRODUCTEUR) ---
     else {
         int k = 0;
-        while (!stop) {
+        while (stop==0) {
             Donnee item_a_envoyer;
-            snprintf(item_a_envoyer.texte, TAILLE_MSG, "Msg n°%d", k++);
+            // Je prépare mon message dans ma variable locale
+            snprintf(item_a_envoyer.texte, TAILLE_MSG, "Message n°%d", k++);
             
-            // A. Attente d'une place (Interruptible)
+            // J'attends une place libre. Gestion du Ctrl+C ici aussi.
             if (sem_wait(&partage->places_libres) == -1) {
-                if (errno == EINTR) continue; // Interruption signal
-                perror("sem_wait père"); break;
+                if (errno == EINTR) continue; // Interruption signal -> on re-test le while
             }
 
-            if (stop) {
-                sem_post(&partage->places_libres);
-                break;
-            }
+            if (stop) break;
 
-            // B. Accès Exclusif
-            sem_wait(&partage->mutex);
+            // -- DÉBUT SECTION CRITIQUE --
+            sem_wait(&partage->mutex); // Verrouillage
 
-            // --- Section Critique ---
+            // Copie de ma structure locale vers la mémoire partagée
             partage->tab[partage->i] = item_a_envoyer;
+            
+            // Avance l'index écriture
             partage->i = (partage->i + 1) % N;
-            // ------------------------
 
-            sem_post(&partage->mutex);
+            sem_post(&partage->mutex); // Déverrouillage
+            // -- FIN SECTION CRITIQUE --
 
-            // C. Nouvel item disponible
+            // Je signale qu'un item est dispo
             sem_post(&partage->items_existants); 
             
-            printf("-> [Père] Écrit : '%s'\n", item_a_envoyer.texte);
+            printf("[Père] J'ai écrit : '%s'\n", item_a_envoyer.texte);
             sleep(1);
         }
 
-        // =================================================================
-        // 5. TERMINAISON PROPRE
-        // =================================================================
-        printf("\n[Père] Attente de la fin du fils...\n");
+        // Gestion de la fin propre
+        printf("\n -> [Père] Arrêt demandé. J'attends que mon fils finisse.\n");
+        wait(NULL); // J'attends que le fils soit vraiment parti
         
-        // Le père a reçu le signal et est sorti de la boucle.
-        // Il doit attendre que le fils (qui a aussi reçu le signal) termine.
-        wait(NULL); 
-        
-        printf("[Père] Nettoyage des ressources partagées.\n");
+        // --- NETTOYAGE (Slide 127) ---
+        printf("[Père] Destruction des sémaphores et mémoire.\n");
         sem_destroy(&partage->places_libres);
         sem_destroy(&partage->items_existants);
         sem_destroy(&partage->mutex);

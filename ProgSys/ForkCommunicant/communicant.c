@@ -17,7 +17,7 @@ void envoyer(const char* chemin_fifo, const char* message) {
     // le tube en lecture de l'autre côté.
     // Si le Producteur ou le Consommateur n'est pas lancé, le communicant
     // restera bloqué ici indéfiniment (sauf si on ajoutait O_NONBLOCK).
-    int fd = open(chemin_fifo, O_WRONLY);
+    int fd = open(chemin_fifo, O_WRONLY); //open connecte le prog à l'entrée du tuyau, (adresse du fichier, mode d'ouverture)
     
     if (fd == -1) {
         printf("   [Erreur] Impossible d'ouvrir %s. Le destinataire est-il lancé ?\n", chemin_fifo);
@@ -27,7 +27,7 @@ void envoyer(const char* chemin_fifo, const char* message) {
     // 2. ÉCRITURE DU MESSAGE (Appel Système write)
     // On écrit la chaîne de caractères + le caractère nul de fin (\0).
     // Cela permet au lecteur de recevoir une chaîne C valide directement.
-    write(fd, message, strlen(message) + 1); 
+    write(fd, message, strlen(message) + 1); //renvoie le nombre d'octets écrits
     
     printf("   -> Envoyé à %s : '%s'\n", chemin_fifo, message);
     
@@ -50,6 +50,7 @@ int main() {
 
     while (1) {
         printf("> ");
+        
         // "%[^\n]" : Lit tout ce qui n'est PAS un retour à la ligne (donc accepte les espaces).
         // "%127[^\n]" : Limite la lecture à 127 caractères pour éviter le débordement (Sécurité).
         
@@ -79,3 +80,4 @@ int main() {
     }
     return 0;
 }
+

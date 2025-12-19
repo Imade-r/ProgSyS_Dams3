@@ -142,8 +142,8 @@ int main() {
                     } else {
                         // On change le message produit
                         printf("! [Père] Changement production -> '%s'\n", buffer);
-                        strncpy(message_actuel, buffer, TAILLE_MSG - 1);
-                        message_actuel[TAILLE_MSG - 1] = '\0';
+                        snprintf(message_actuel, TAILLE_MSG, "%s", buffer);
+                        // ecris dans message actuel: buffer, sans depasser la taille du msg
                     }
                 }
             }
@@ -194,3 +194,4 @@ int main() {
 
     return 0;
 }
+

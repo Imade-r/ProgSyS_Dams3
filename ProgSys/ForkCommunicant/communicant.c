@@ -17,7 +17,7 @@ void envoyer(const char* chemin_fifo, const char* message) {
     // le tube en lecture de l'autre côté.
     // Si le Producteur ou le Consommateur n'est pas lancé, le communicant
     // restera bloqué ici indéfiniment (sauf si on ajoutait O_NONBLOCK).
-    int fd = open(chemin_fifo, O_WRONLY); //open connecte le prog à l'entrée du tuyau, (adresse du fichier, mode d'ouverture)
+    int fd = open(chemin_fifo, O_WRONLY); //open connecte le prog à l'entrée du tuyau, (adresse du fichier, mode d'ouverture) , fd: ticket de vestiaire
     
     if (fd == -1) {
         printf("   [Erreur] Impossible d'ouvrir %s. Le destinataire est-il lancé ?\n", chemin_fifo);
@@ -28,6 +28,7 @@ void envoyer(const char* chemin_fifo, const char* message) {
     // On écrit la chaîne de caractères + le caractère nul de fin (\0).
     // Cela permet au lecteur de recevoir une chaîne C valide directement.
     write(fd, message, strlen(message) + 1); //renvoie le nombre d'octets écrits
+    //où, quoi, combien
     
     printf("   -> Envoyé à %s : '%s'\n", chemin_fifo, message);
     
@@ -80,4 +81,5 @@ int main() {
     }
     return 0;
 }
+
 

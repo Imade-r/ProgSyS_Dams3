@@ -3,7 +3,7 @@
 #include <unistd.h>     // Pour write, close
 #include <string.h>     // Pour strlen, strcmp
 #include <fcntl.h>      // Pour open, O_WRONLY
-#include "3-common.h"   // Pour récupérer les noms FIFO_PROD et FIFO_CONSO
+#include "common.h"   // Pour récupérer les noms FIFO_PROD et FIFO_CONSO
 
 #define CMD_SIZE 128
 
@@ -17,7 +17,7 @@ void envoyer(const char* chemin_fifo, const char* message) {
     // le tube en lecture de l'autre côté.
     // Si le Producteur ou le Consommateur n'est pas lancé, le communicant
     // restera bloqué ici indéfiniment (sauf si on ajoutait O_NONBLOCK).
-    int fd = open(chemin_fifo, O_WRONLY);
+    int fd = open(chemin_fifo, O_WRONLY); // open
     
     if (fd == -1) {
         printf("   [Erreur] Impossible d'ouvrir %s. Le destinataire est-il lancé ?\n", chemin_fifo);
@@ -27,7 +27,7 @@ void envoyer(const char* chemin_fifo, const char* message) {
     // 2. ÉCRITURE DU MESSAGE (Appel Système write)
     // On écrit la chaîne de caractères + le caractère nul de fin (\0).
     // Cela permet au lecteur de recevoir une chaîne C valide directement.
-    write(fd, message, strlen(message) + 1); 
+    write(fd, message, strlen(message) + 1); //renvoie le nombre d'octets écrits
     
     printf("   -> Envoyé à %s : '%s'\n", chemin_fifo, message);
     
@@ -58,10 +58,13 @@ int main() {
         // Si l'utilisateur fait Ctrl+D (EOF) ou s'il y a une erreur
         if (resultat == EOF) break;
 
+        //Compare ce qui a dans bufffer avec q. Si les deux sont identiques, strcmp renvoie 0.
         if (strcmp(buffer, "q") == 0) break;
+
+        //Si on rentre rien, ca continue
         if (strlen(buffer) == 0) continue;
 
-        // Analyse de la commande
+        //  On compare les 2 premiers caracteres
         if (strncmp(buffer, "p ", 2) == 0) {
             // Envoie au Producteur tout ce qui suit "p "
             envoyer(FIFO_PROD, buffer + 2); 

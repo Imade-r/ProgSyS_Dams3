@@ -24,8 +24,6 @@ int main() {
     // =================================================================
     struct sigaction psa;
     psa.sa_handler = handler;  // Fonction à appeler
-    sigemptyset(&psa.sa_mask); // Pas de masquage supplémentaire
-    psa.sa_flags = 0;          // Comportement par défaut
     
     // Interception de Ctrl+C
     sigaction(SIGINT, &psa, NULL);
@@ -151,3 +149,4 @@ int main() {
     return 0;
 
 }
+
